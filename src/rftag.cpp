@@ -3,70 +3,68 @@
 
 #include "pindefs.h"
 #include "rftag.h"
-#include "PN532.h"
+
 #include "PN532_I2C.h"
+#include "PN532.h"
 #include "NfcAdapter.h"
 
-PN532_I2C pn532i2c(Wire);
-NfcAdapter nfc = NfcAdapter(pn532i2c);
+#define CARD_DELAY    1000  // wait 1s before reading another card
 
-uint8_t connected = true;
-int readTimeout = 1000;
-int timer = 0;
+PN532_I2C pn532_i2c(Wire);
+NfcAdapter nfc = NfcAdapter(pn532_i2c, NFC_IRQ);
+
+long lastRead = 0;
+bool enabled = true;
+int irqCurr;
+int irqPrev;
+
+void Radio::startListening() {
+  irqPrev = irqCurr = HIGH;
+  nfc.startPassive();
+  Serial.println("Scan a NFC tag");
+}
+
+String Radio::readCard() {
+  String retStr = "";
+  if (nfc.tagPresent()) {
+    NfcTag tag = nfc.read();
+    NdefMessage message = tag.getNdefMessage();
+    NdefRecord record = message.getRecord(0);
+    int payloadLength = record.getPayloadLength();
+    byte payload[payloadLength];
+    record.getPayload(payload);
+    String payloadAsString = "";
+    for (int c = 3; c < payloadLength; c++) {
+      payloadAsString += (char)payload[c];
+    }
+    retStr = payloadAsString;
+    
+    lastRead = millis();
+  }
+  enabled = false;
+  return retStr;
+}
 
 void Radio::begin() {
   nfc.begin();
+  startListening();
 }
 
 String Radio::loop() {
-  if (connected && millis() > timer) {
-    readTimeout = 1000;
-    timer = millis() + readTimeout;
-    Serial.println("Looking for card...");
-    if (nfc.tagPresent(100)) {
-      readTimeout = 2000;
-      NfcTag tag = nfc.read();
-      NdefMessage message = tag.getNdefMessage();
-      NdefRecord record = message.getRecord(0);
-      int payloadLength = record.getPayloadLength();
-      byte payload[payloadLength];
-      record.getPayload(payload);
-      String payloadAsString = "";
-      for (int c = 3; c < payloadLength; c++) {
-        payloadAsString += (char)payload[c];
-      }
-      return payloadAsString;
+  String retVal = "";
+  if (!enabled) {
+    if (millis() - lastRead > CARD_DELAY) {
+      enabled = true;
+      startListening();
     }
+  } else {
+    irqCurr = digitalRead(NFC_IRQ);
+
+    if (irqCurr == LOW && irqPrev == HIGH) {
+      retVal = readCard();
+    }
+  
+    irqPrev = irqCurr;
   }
-  return "";
+  return retVal;
 }
-
-
-      /*
-      NdefMessage message = NdefMessage();
-      message.addTextRecord("/01. Threshold - Steve Miller Band.mp3");
-      bool success = nfc.write(message);
-      if (success) {
-        Serial.println("Success. Try reading this tag with your phone.");        
-      } else {
-        Serial.println("Write failed.");
-      }
-
-      Serial.print("Cleaning card...");
-      bool success = nfc.clean();
-      if (success) {
-          Serial.println("\nSuccess, tag restored to factory state.");
-      } else {
-          Serial.println("\nError, unable to clean tag.");
-      }
-
-      Serial.print("Formatting to NDEF...");
-      success = nfc.format();
-      if (success) {
-        Serial.println("Done");
-      } else {
-        Serial.println("Failed");
-      }
-
-      sleep(2);
-      */

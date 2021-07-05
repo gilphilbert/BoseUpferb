@@ -6,7 +6,7 @@
 #include "PN532_debug.h"
 #include "Arduino.h"
 
-#define PN532_I2C_ADDRESS 0x24
+#define PN532_I2C_ADDRESS (0x48 >> 1)
 
 PN532_I2C::PN532_I2C(TwoWire &wire)
 {
@@ -251,8 +251,4 @@ int8_t PN532_I2C::readAckFrame()
     }
 
     return 0;
-}
-
-bool PN532_I2C::goPassive() {
-    
 }
