@@ -13,6 +13,7 @@
 #include "pindefs.h"
 #include "display.h"
 #include "rftag.h"
+#include "buttons.h"
 
 AudioGeneratorMP3 *mp3;
 AudioOutputI2S *out;
@@ -20,7 +21,8 @@ AudioFileSourceSD *source = NULL;
 AudioFileSourceID3 *id3;
 
 Display screen;
-Radio radio;
+Radio nfcReader; //badly named, this is the NFC reader
+Buttons buttons;
 
 File dir;
 
@@ -105,6 +107,13 @@ void playerTask(void * parameter) {
   }
 }
 
+void buttonRequest (buttonState buttons) {
+  Serial.print("THREE::");
+  Serial.println(buttons.three);
+  Serial.print("UP::");
+  Serial.println(buttons.up);
+}
+
 void setup() {
   Serial.begin(9600);
   delay(1000);
@@ -118,10 +127,12 @@ void setup() {
   SD.begin(SD_CS);
   dir = SD.open("/");
 
+  buttons.begin(BUTTONS_IRQ, buttonRequest);
+
   screen.begin();
   screen.welcome();
 
-  radio.begin();
+  nfcReader.begin();
 
   controlQueue = xQueueCreate( queueSize, sizeof( String ) );
   statusQueue = xQueueCreate( queueSize, sizeof( int ) );
@@ -131,7 +142,7 @@ void setup() {
 
 bool playState = false;
 void loop() {
-  const String file = radio.loop();
+  const String file = nfcReader.loop();
   if (!file.equals("")) {
     if (SD.exists(file)) {
       playerMessage pf;
@@ -161,4 +172,6 @@ void loop() {
     screen.welcome();
     playState = false;
   }
+
+  buttons.loop();
 }
