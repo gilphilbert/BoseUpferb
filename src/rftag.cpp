@@ -45,6 +45,23 @@ String Radio::readCard() {
   return retStr;
 }
 
+uint8_t Radio::formatTag() {
+  if (nfc.tagPresent()) {
+    return nfc.format();
+  }
+  return 0;
+}
+
+uint8_t Radio::writeNewTag() {
+  if (nfc.tagPresent()) {
+    NdefMessage msg;
+    msg.addTextRecord(writeString);
+    writeString = "";
+    return nfc.write(msg);
+  }
+  return 0;
+}
+
 void Radio::begin() {
   nfc.begin();
   startListening();
@@ -61,10 +78,28 @@ String Radio::loop() {
     irqCurr = digitalRead(NFC_IRQ);
 
     if (irqCurr == LOW && irqPrev == HIGH) {
-      retVal = readCard();
+      if (writeString == "") {
+        retVal = readCard();
+      } else {
+        // do writing of tag, probably need to format tag first
+        uint8_t status = NFC_STATUS_FAILED;
+        if (formatTag()) {
+          if (writeNewTag()) {
+            status = NFC_STATUS_SUCCESS;
+          }
+        }
+      }
     }
   
     irqPrev = irqCurr;
   }
   return retVal;
+}
+
+void Radio::writeTag(String tagString) {
+  writeString = tagString;
+}
+
+void Radio::cancelWrite() {
+  writeString = "";
 }
