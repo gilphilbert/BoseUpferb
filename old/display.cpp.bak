@@ -6,8 +6,6 @@
 
 #include <SD.h>
 
-#include "rftag.h"
-
 #include <SPI.h>
 #include <menu.h>
 #include <menuIO/u8g2Out.h>
@@ -17,28 +15,28 @@
 using namespace Menu;
 
 result filePick(eventMask event, navNode& nav, prompt &item);
-void _displayWriteTag(String fn);
+void writeTag(String fn);
 
 /* -------- information about the idle screen -------- */
 String _artist = "";
 String _trackName = "";
 String _filename = "";
 
-bool idleHasChanged = false;
-
 /* -------- configure u8g2 -------- */
 #define fontName u8g2_font_6x10_tf
 #define fontX 7
 #define fontY 11
-U8G2_SSD1322_NHD_256X64_F_4W_HW_SPI u8g2(U8G2_R2, DISPLAY_CS, DISPLAY_DC, DISPLAY_RESET);
+//U8G2_SSD1322_NHD_256X64_F_4W_HW_SPI u8g2(U8G2_R2, DISPLAY_CS, DISPLAY_DC, DISPLAY_RESET);
+U8G2_SSD1322_NHD_256X64_F_3W_HW_SPI u8g2(U8G2_R2, DISPLAY_CS, DISPLAY_RESET);
 
 /* -------- configure sd card file picker -------- */
 CachedSDMenu<32> filePickMenu("Write Tag","/",filePick,enterEvent);
 result filePick(eventMask event, navNode& navN, prompt &item) {
-  if (navN.root->navFocus==(navTarget*)&filePickMenu) {
-    writeTag(filePickMenu.selectedFile);
-    _displayWriteTag(filePickMenu.selectedFile);
-  }
+      if (navN.root->navFocus==(navTarget*)&filePickMenu) {
+        //Serial.println(filePickMenu.selectedFile);
+        writeTag(filePickMenu.selectedFile);
+        //_filename = filePickMenu.selectedFile;
+      }
   return proceed;
 }
 
@@ -80,9 +78,6 @@ void mainDisplay() {
   u8g2.clearBuffer();
 
   if (_filename != "") {
-    #ifdef DISP_DEBUG
-    Serial.println("DISP::Drawing write tag");
-    #endif
     u8g2.setFont(u8g2_font_open_iconic_embedded_2x_t);
     u8g2.drawGlyph(120, 29, 0x0045);
 
@@ -91,9 +86,6 @@ void mainDisplay() {
   }
 
   else if (_artist != "") {
-    #ifdef DISP_DEBUG
-    Serial.println("DISP::Drawing playing song");
-    #endif
     u8g2.setFont(u8g2_font_crox4hb_tf);
     u8g2.drawStr(centerText(_trackName.c_str()), 20, _trackName.c_str());
 
@@ -104,9 +96,6 @@ void mainDisplay() {
     u8g2.drawBox(80, 50, 23, 10);
 
   } else {
-    #ifdef DISP_DEBUG
-    Serial.println("DISP::Drawing idle screen");
-    #endif
     u8g2.setFont(u8g2_font_open_iconic_play_2x_t);
     u8g2.drawGlyph(120, 29, 0x004D);
 
@@ -114,92 +103,66 @@ void mainDisplay() {
     u8g2.setFont(u8g2_font_crox2hb_tf);
     u8g2.drawStr(centerText(str.c_str()), 54, str.c_str());
   }
-  nav.idleChanged = false;
+
   u8g2.sendBuffer();
 }
 
 void displayTrack(String trackName, String artist) {
-  #ifdef DISP_DEBUG
-  Serial.println("DISP::New track display request");
-  #endif
   _artist = artist;
   _trackName = trackName;
-  nav.idleChanged = true;
 }
 
 void displayClear() {
   _artist = "";
   _trackName = "";
-  nav.idleChanged = true;
 }
 
-void _displayWriteTag(String fn) {
+void writeTag(String fn) {
   _filename = fn;
   nav.exit();
-
   // here, we call the request to write the NFC tag...
-}
-
-result idle(menuOut& o,idleEvent e) {
-  switch(e) {
-    case idleStart:
-      //nav.idleChanged = true;
-      break;
-    case idling:
-      mainDisplay();
-      break;
-    case idleEnd:
-      break;
-  }
-  return proceed;
 }
 
 /* -------- setup module -------- */
 void displaySetup() {
+  //SPI.begin();
   u8g2.begin();
   u8g2.setFont(fontName);
 
+  //if (!SD.begin(5)) {
+  //  while (1);
+  //}
   filePickMenu.begin();
 
-  nav.idleTask = idle;
   nav.exit();
-  // nav.idleChanged = true;
 }
 
 /* -------- main loop -------- */
 void displayLoop() {
   nav.doInput();
-  if (nav.changed(0)) {
-    u8g2.clearBuffer();
-    u8g2.setFont(fontName);
-    nav.doOutput();
-    u8g2.sendBuffer();
-  }
-}
-
-// returns whether or not we're in the menu
-bool inMenu() {
-  if (nav.sleepTask) {
-    return false;
-  }
-  return true;
+  //if (nav.sleepTask) {
+  //  mainDisplay();
+  //} else {
+    if (nav.changed(0)) {
+      u8g2.clearBuffer();
+      u8g2.setFont(fontName);
+      nav.doOutput();
+      u8g2.sendBuffer();
+    }
+  //}
 }
 
 /* -------- button handlers -------- */
 void navUp() {
-  nav.doNav(navCmd(downCmd));
+  nav.doNav(navCmd(upCmd));
 }
 
 void navDown() {
-  nav.doNav(navCmd(upCmd));
+  nav.doNav(navCmd(downCmd));
 }
 
 void navEnter() {
   nav.doNav(navCmd(enterCmd));
-}
-
-void navExit() {
-  nav.exit();
 }
 
 void navEscape() {

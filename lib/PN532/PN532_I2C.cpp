@@ -16,7 +16,7 @@ PN532_I2C::PN532_I2C(TwoWire &wire)
 
 void PN532_I2C::begin()
 {
-    _wire->begin();
+    _wire->begin(21, 22, 100000);
 }
 
 void PN532_I2C::wakeup()

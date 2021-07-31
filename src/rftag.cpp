@@ -4,40 +4,52 @@
 #include "pindefs.h"
 #include "rftag.h"
 
-#include "PN532_I2C.h"
+#include "PN532_SPI.h"
 #include "PN532.h"
 #include "NfcAdapter.h"
 
-#define CARD_DELAY    1000  // wait 1s before reading another card
+#define CARD_DELAY    2000  // wait 1s before reading another card
 
-PN532_I2C pn532_i2c(Wire);
-NfcAdapter nfc = NfcAdapter(pn532_i2c, NFC_IRQ);
+PN532_SPI pn532spi(SPI, NFC_CS);
+NfcAdapter nfc = NfcAdapter(pn532spi, NFC_IRQ);
 
 long lastRead = 0;
 bool enabled = true;
 int irqCurr;
 int irqPrev;
 
-void Radio::startListening() {
+#define NFC_MODE_READ   0
+#define NFC_MODE_WRITE  1
+
+String writeString = "";
+uint8_t mode = NFC_MODE_READ;
+
+void startListening() {
   irqPrev = irqCurr = HIGH;
   nfc.startPassive();
   Serial.println("Scan a NFC tag");
 }
 
-String Radio::readCard() {
+String readCard() {
   String retStr = "";
   if (nfc.tagPresent()) {
     NfcTag tag = nfc.read();
-    NdefMessage message = tag.getNdefMessage();
-    NdefRecord record = message.getRecord(0);
-    int payloadLength = record.getPayloadLength();
-    byte payload[payloadLength];
-    record.getPayload(payload);
-    String payloadAsString = "";
-    for (int c = 3; c < payloadLength; c++) {
-      payloadAsString += (char)payload[c];
+    if(!tag.hasNdefMessage()) {
+      Serial.println("Error reading tag");
+      return "";
     }
-    retStr = payloadAsString;
+    NdefMessage message = tag.getNdefMessage();
+    if (message.getRecordCount() > 0) {
+      NdefRecord record = message.getRecord(0);
+      int payloadLength = record.getPayloadLength();
+      byte payload[payloadLength];
+      record.getPayload(payload);
+      String payloadAsString = "";
+      for (int c = 3; c < payloadLength; c++) {
+        payloadAsString += (char)payload[c];
+      }
+      retStr = payloadAsString;
+    }
     
     lastRead = millis();
   }
@@ -45,29 +57,45 @@ String Radio::readCard() {
   return retStr;
 }
 
-uint8_t Radio::formatTag() {
+bool writeNewTag() {
   if (nfc.tagPresent()) {
-    return nfc.format();
+    String filename = writeString;
+    mode = NFC_MODE_READ;
+
+    Serial.println("NFC::Starting write");
+    bool success = nfc.clean();
+    if (!success) {
+      // handle error condition
+      Serial.println("NFC::Couldn't clean tag");
+      return false;
+    }
+    Serial.println("NFC::Tag cleaned");
+    success = nfc.format();
+    if (!success) {
+      // handle error condition
+      Serial.println("NFC::Tag formatted");
+      return false;
+    }
+    NdefMessage message = NdefMessage();
+    message.addTextRecord(filename);
+    success = nfc.write(message);
+    if (!success) {
+      // handle error condition
+      Serial.println("NFC::Couldn't write tag");
+    }
+    Serial.println("NFC::Tag written");
+    return success;
   }
-  return 0;
+  Serial.println("NFC::No tag present");
+  return false;
 }
 
-uint8_t Radio::writeNewTag() {
-  if (nfc.tagPresent()) {
-    NdefMessage msg;
-    msg.addTextRecord(writeString);
-    writeString = "";
-    return nfc.write(msg);
-  }
-  return 0;
-}
-
-void Radio::begin() {
+void nfcSetup() {
   nfc.begin();
   startListening();
 }
 
-String Radio::loop() {
+String nfcLoop() {
   String retVal = "";
   if (!enabled) {
     if (millis() - lastRead > CARD_DELAY) {
@@ -78,16 +106,12 @@ String Radio::loop() {
     irqCurr = digitalRead(NFC_IRQ);
 
     if (irqCurr == LOW && irqPrev == HIGH) {
-      if (writeString == "") {
-        retVal = readCard();
+      if (mode == NFC_MODE_WRITE) {
+        Serial.println("Writing Tag");
+        bool success = writeNewTag();
       } else {
-        // do writing of tag, probably need to format tag first
-        uint8_t status = NFC_STATUS_FAILED;
-        if (formatTag()) {
-          if (writeNewTag()) {
-            status = NFC_STATUS_SUCCESS;
-          }
-        }
+        Serial.println("Reading Tag");
+        retVal = readCard();
       }
     }
   
@@ -96,10 +120,12 @@ String Radio::loop() {
   return retVal;
 }
 
-void Radio::writeTag(String tagString) {
+void writeTag(String tagString) {
+  Serial.print("NFC::Write request = ");Serial.println(tagString);
   writeString = tagString;
+  mode = NFC_MODE_WRITE;
 }
 
-void Radio::cancelWrite() {
-  writeString = "";
+void cancelWriteTag() {
+  //writeString = "";
 }

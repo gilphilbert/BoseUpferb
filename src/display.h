@@ -1,11 +1,15 @@
+#ifndef BOSE_MENU
+#define BOSE_MENU
 
-#ifndef RADIO_DISP
-#define RADIO_DISP
+void displaySetup();
+void displayLoop();
 
-class Display {
-  public:
-    void begin();
-    void updateScreen(const char* title, const char* artist);
-    void welcome();
-};
+void displayTrack(String trackName, String artist);
+void displayClear();
+
+void navUp();
+void navDown();
+void navEnter();
+void navEscape();
+
 #endif
