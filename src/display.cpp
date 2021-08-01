@@ -24,6 +24,13 @@ String _artist = "";
 String _trackName = "";
 String _filename = "";
 
+#define DISPLAY_MODE_IDLE       0
+#define DISPLAY_MODE_TRACK      1
+#define DISPLAY_MODE_WRITE_TAG  2
+#define DISPLAY_MODE_WRITE_DONE 3
+#define DISPLAY_MODE_WRITE_FAIL 4
+uint8_t idleMode = DISPLAY_MODE_IDLE;
+
 bool idleHasChanged = false;
 
 /* -------- configure u8g2 -------- */
@@ -36,7 +43,6 @@ U8G2_SSD1322_NHD_256X64_F_4W_HW_SPI u8g2(U8G2_R2, DISPLAY_CS, DISPLAY_DC, DISPLA
 CachedSDMenu<32> filePickMenu("Write Tag","/",filePick,enterEvent);
 result filePick(eventMask event, navNode& navN, prompt &item) {
   if (navN.root->navFocus==(navTarget*)&filePickMenu) {
-    writeTag(filePickMenu.selectedFile);
     _displayWriteTag(filePickMenu.selectedFile);
   }
   return proceed;
@@ -79,65 +85,106 @@ uint8_t centerText(const char* str) {
 void mainDisplay() {
   u8g2.clearBuffer();
 
-  if (_filename != "") {
-    #ifdef DISP_DEBUG
-    Serial.println("DISP::Drawing write tag");
-    #endif
-    u8g2.setFont(u8g2_font_open_iconic_embedded_2x_t);
-    u8g2.drawGlyph(120, 29, 0x0045);
+  switch(idleMode) {
+    case DISPLAY_MODE_IDLE: {
+      #ifdef DISP_DEBUG
+      Serial.println("DISP::Drawing idle screen");
+      #endif
+      u8g2.setFont(u8g2_font_open_iconic_play_2x_t);
+      u8g2.drawGlyph(120, 29, 0x004D);
 
-    u8g2.setFont(u8g2_font_crox1h_tf);
-    u8g2.drawStr(centerText(_filename.c_str()), 54, _filename.c_str());
+      String str = "Scan a card";
+      u8g2.setFont(u8g2_font_crox2hb_tf);
+      u8g2.drawStr(centerText(str.c_str()), 54, str.c_str());
+      break;
+    }
+    case DISPLAY_MODE_TRACK: {
+      #ifdef DISP_DEBUG
+      Serial.println("DISP::Drawing playing song");
+      #endif
+      u8g2.setFont(u8g2_font_crox4hb_tf);
+      u8g2.drawStr(centerText(_trackName.c_str()), 20, _trackName.c_str());
+
+      u8g2.setFont(u8g2_font_crox2hb_tf);
+      u8g2.drawStr(centerText(_artist.c_str()), 40, _artist.c_str());
+
+      u8g2.drawFrame(80, 50, 96, 10);
+      u8g2.drawBox(80, 50, 23, 10);
+      break;
+    }
+    case DISPLAY_MODE_WRITE_TAG: {
+      #ifdef DISP_DEBUG
+      Serial.println("DISP::Drawing write tag");
+      #endif
+      u8g2.setFont(u8g2_font_open_iconic_embedded_2x_t);
+      u8g2.drawGlyph(120, 29, 0x0045);
+
+      u8g2.setFont(u8g2_font_crox1h_tf);
+      u8g2.drawStr(centerText(_filename.c_str()), 54, _filename.c_str());
+      break;
+    }
+    case DISPLAY_MODE_WRITE_DONE: {
+      #ifdef DISP_DEBUG
+      Serial.println("DISP::Drawing successful write");
+      #endif
+      u8g2.setFont(u8g2_font_open_iconic_embedded_2x_t);
+      u8g2.drawGlyph(120, 29, 0x0045);
+
+      String str = "Write Complete";
+      u8g2.setFont(u8g2_font_crox1h_tf);
+      u8g2.drawStr(centerText(str.c_str()), 54, str.c_str());
+      idleMode = DISPLAY_MODE_IDLE;
+      break;
+    }
+    case DISPLAY_MODE_WRITE_FAIL: {
+      #ifdef DISP_DEBUG
+      Serial.println("DISP::Drawing failed write");
+      #endif
+      u8g2.setFont(u8g2_font_open_iconic_embedded_2x_t);
+      u8g2.drawGlyph(120, 29, 0x0045);
+
+      String str = "Write Failed";
+      u8g2.setFont(u8g2_font_crox1h_tf);
+      u8g2.drawStr(centerText(str.c_str()), 54, str.c_str());
+      idleMode = DISPLAY_MODE_IDLE;
+      break;
+    }
   }
-
-  else if (_artist != "") {
-    #ifdef DISP_DEBUG
-    Serial.println("DISP::Drawing playing song");
-    #endif
-    u8g2.setFont(u8g2_font_crox4hb_tf);
-    u8g2.drawStr(centerText(_trackName.c_str()), 20, _trackName.c_str());
-
-    u8g2.setFont(u8g2_font_crox2hb_tf);
-    u8g2.drawStr(centerText(_artist.c_str()), 40, _artist.c_str());
-
-    u8g2.drawFrame(80, 50, 96, 10);
-    u8g2.drawBox(80, 50, 23, 10);
-
-  } else {
-    #ifdef DISP_DEBUG
-    Serial.println("DISP::Drawing idle screen");
-    #endif
-    u8g2.setFont(u8g2_font_open_iconic_play_2x_t);
-    u8g2.drawGlyph(120, 29, 0x004D);
-
-    String str = "Scan a card";
-    u8g2.setFont(u8g2_font_crox2hb_tf);
-    u8g2.drawStr(centerText(str.c_str()), 54, str.c_str());
-  }
-  nav.idleChanged = false;
   u8g2.sendBuffer();
+
+  nav.idleChanged = false;
 }
 
 void displayTrack(String trackName, String artist) {
   #ifdef DISP_DEBUG
   Serial.println("DISP::New track display request");
   #endif
+  idleMode = DISPLAY_MODE_TRACK;
   _artist = artist;
   _trackName = trackName;
   nav.idleChanged = true;
 }
 
 void displayClear() {
-  _artist = "";
-  _trackName = "";
+  idleMode = DISPLAY_MODE_IDLE;
+  nav.idleChanged = true;
+}
+
+void displayWriteSuccess(bool failed = false) {
+  if (failed)
+    idleMode = DISPLAY_MODE_WRITE_FAIL;
+  else
+    idleMode = DISPLAY_MODE_WRITE_DONE;
   nav.idleChanged = true;
 }
 
 void _displayWriteTag(String fn) {
   _filename = fn;
+  idleMode = DISPLAY_MODE_WRITE_TAG;
+  nav.idleChanged = true;
   nav.exit();
-
   // here, we call the request to write the NFC tag...
+  writeTag(filePickMenu.selectedFile);
 }
 
 result idle(menuOut& o,idleEvent e) {

@@ -3,6 +3,7 @@
 
 #include "pindefs.h"
 #include "rftag.h"
+#include "display.h"
 
 #include "PN532_SPI.h"
 #include "PN532.h"
@@ -50,10 +51,7 @@ String readCard() {
       }
       retStr = payloadAsString;
     }
-    
-    lastRead = millis();
   }
-  enabled = false;
   return retStr;
 }
 
@@ -82,8 +80,9 @@ bool writeNewTag() {
     if (!success) {
       // handle error condition
       Serial.println("NFC::Couldn't write tag");
+    } else {
+      Serial.println("NFC::Tag written");
     }
-    Serial.println("NFC::Tag written");
     return success;
   }
   Serial.println("NFC::No tag present");
@@ -109,10 +108,14 @@ String nfcLoop() {
       if (mode == NFC_MODE_WRITE) {
         Serial.println("Writing Tag");
         bool success = writeNewTag();
+        displayWriteSuccess(!success);
+        startListening();
       } else {
         Serial.println("Reading Tag");
         retVal = readCard();
       }
+      lastRead = millis();
+      enabled = false;
     }
   
     irqPrev = irqCurr;

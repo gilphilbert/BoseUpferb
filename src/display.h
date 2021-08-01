@@ -7,6 +7,8 @@ void displayLoop();
 void displayTrack(String trackName, String artist);
 void displayClear();
 
+void displayWriteSuccess(bool failed);
+
 void navUp();
 void navDown();
 void navEnter();
