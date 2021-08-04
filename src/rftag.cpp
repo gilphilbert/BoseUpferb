@@ -3,11 +3,14 @@
 
 #include "pindefs.h"
 #include "rftag.h"
-#include "display.h"
 
 #include "PN532_SPI.h"
 #include "PN532.h"
 #include "NfcAdapter.h"
+
+#include "display.h"
+
+//#define NFC_LOG
 
 #define CARD_DELAY    2000  // wait 1s before reading another card
 
@@ -28,7 +31,9 @@ uint8_t mode = NFC_MODE_READ;
 void startListening() {
   irqPrev = irqCurr = HIGH;
   nfc.startPassive();
+  #ifdef NFC_LOG
   Serial.println("Scan a NFC tag");
+  #endif
 }
 
 String readCard() {
@@ -36,7 +41,9 @@ String readCard() {
   if (nfc.tagPresent()) {
     NfcTag tag = nfc.read();
     if(!tag.hasNdefMessage()) {
+      #ifdef NFC_LOG
       Serial.println("Error reading tag");
+      #endif
       return "";
     }
     NdefMessage message = tag.getNdefMessage();
@@ -60,18 +67,26 @@ bool writeNewTag() {
     String filename = writeString;
     mode = NFC_MODE_READ;
 
+    #ifdef NFC_LOG
     Serial.println("NFC::Starting write");
+    #endif
     bool success = nfc.clean();
     if (!success) {
       // handle error condition
+      #ifdef NFC_LOG
       Serial.println("NFC::Couldn't clean tag");
+      #endif
       return false;
     }
+    #ifdef NFC_LOG
     Serial.println("NFC::Tag cleaned");
+    #endif
     success = nfc.format();
     if (!success) {
       // handle error condition
+      #ifdef NFC_LOG
       Serial.println("NFC::Tag formatted");
+      #endif
       return false;
     }
     NdefMessage message = NdefMessage();
@@ -79,13 +94,19 @@ bool writeNewTag() {
     success = nfc.write(message);
     if (!success) {
       // handle error condition
+      #ifdef NFC_LOG
       Serial.println("NFC::Couldn't write tag");
+      #endif
     } else {
+      #ifdef NFC_LOG
       Serial.println("NFC::Tag written");
+      #endif
     }
     return success;
   }
+  #ifdef NFC_LOG
   Serial.println("NFC::No tag present");
+  #endif
   return false;
 }
 
@@ -106,12 +127,17 @@ String nfcLoop() {
 
     if (irqCurr == LOW && irqPrev == HIGH) {
       if (mode == NFC_MODE_WRITE) {
+        #ifdef NFC_LOG
         Serial.println("Writing Tag");
+        #endif
+        displayWritingTag();
         bool success = writeNewTag();
         displayWriteSuccess(!success);
         startListening();
       } else {
+        #ifdef NFC_LOG
         Serial.println("Reading Tag");
+        #endif
         retVal = readCard();
       }
       lastRead = millis();
@@ -124,7 +150,9 @@ String nfcLoop() {
 }
 
 void writeTag(String tagString) {
+  #ifdef NFC_LOG
   Serial.print("NFC::Write request = ");Serial.println(tagString);
+  #endif
   writeString = tagString;
   mode = NFC_MODE_WRITE;
 }

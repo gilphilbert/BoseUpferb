@@ -5,19 +5,18 @@
 #include <display.h>
 
 #include <SD.h>
-
-#include "rftag.h"
-
 #include <SPI.h>
+
 #include <menu.h>
 #include <menuIO/u8g2Out.h>
 #include <menuIO/chainStream.h>
 #include <plugin/SDMenu.h>
 
+#include "rftag.h"
+
 using namespace Menu;
 
-result filePick(eventMask event, navNode& nav, prompt &item);
-void _displayWriteTag(String fn);
+//#define DISPLAY_MENU_LOG
 
 /* -------- information about the idle screen -------- */
 String _artist = "";
@@ -27,11 +26,13 @@ String _filename = "";
 #define DISPLAY_MODE_IDLE       0
 #define DISPLAY_MODE_TRACK      1
 #define DISPLAY_MODE_WRITE_TAG  2
-#define DISPLAY_MODE_WRITE_DONE 3
-#define DISPLAY_MODE_WRITE_FAIL 4
+#define DISPLAY_MODE_WRITING    3
+#define DISPLAY_MODE_WRITE_DONE 4
+#define DISPLAY_MODE_WRITE_FAIL 5
 uint8_t idleMode = DISPLAY_MODE_IDLE;
 
-bool idleHasChanged = false;
+#define DISP_IDLE_TIMEOUT   2000
+unsigned long idleTimeout = 0;
 
 /* -------- configure u8g2 -------- */
 #define fontName u8g2_font_6x10_tf
@@ -40,7 +41,11 @@ bool idleHasChanged = false;
 U8G2_SSD1322_NHD_256X64_F_4W_HW_SPI u8g2(U8G2_R2, DISPLAY_CS, DISPLAY_DC, DISPLAY_RESET);
 
 /* -------- configure sd card file picker -------- */
+result filePick(eventMask event, navNode& nav, prompt &item);
+void _displayWriteTag(String fn);
+
 CachedSDMenu<32> filePickMenu("Write Tag","/",filePick,enterEvent);
+
 result filePick(eventMask event, navNode& navN, prompt &item) {
   if (navN.root->navFocus==(navTarget*)&filePickMenu) {
     _displayWriteTag(filePickMenu.selectedFile);
@@ -87,7 +92,7 @@ void mainDisplay() {
 
   switch(idleMode) {
     case DISPLAY_MODE_IDLE: {
-      #ifdef DISP_DEBUG
+      #ifdef DISPLAY_MENU_LOG
       Serial.println("DISP::Drawing idle screen");
       #endif
       u8g2.setFont(u8g2_font_open_iconic_play_2x_t);
@@ -99,54 +104,71 @@ void mainDisplay() {
       break;
     }
     case DISPLAY_MODE_TRACK: {
-      #ifdef DISP_DEBUG
+      #ifdef DISPLAY_MENU_LOG
       Serial.println("DISP::Drawing playing song");
       #endif
-      u8g2.setFont(u8g2_font_crox4hb_tf);
-      u8g2.drawStr(centerText(_trackName.c_str()), 20, _trackName.c_str());
+      u8g2.setFont(u8g2_font_open_iconic_play_2x_t);
+      u8g2.drawGlyph(5, 20, 0x0045);
 
       u8g2.setFont(u8g2_font_crox2hb_tf);
-      u8g2.drawStr(centerText(_artist.c_str()), 40, _artist.c_str());
+      u8g2.drawStr(24, 20, _trackName.c_str());
 
-      u8g2.drawFrame(80, 50, 96, 10);
-      u8g2.drawBox(80, 50, 23, 10);
+      u8g2.setFont(u8g2_font_crox1h_tf);
+      u8g2.drawStr(24, 34, _artist.c_str());
+
+      u8g2.drawFrame(24, 54, 208, 8);
+      u8g2.drawBox(24, 54, 104, 8);
       break;
     }
     case DISPLAY_MODE_WRITE_TAG: {
-      #ifdef DISP_DEBUG
+      #ifdef DISPLAY_MENU_LOG
       Serial.println("DISP::Drawing write tag");
       #endif
-      u8g2.setFont(u8g2_font_open_iconic_embedded_2x_t);
+      u8g2.setFont(u8g2_font_open_iconic_app_2x_t);
       u8g2.drawGlyph(120, 29, 0x0045);
 
       u8g2.setFont(u8g2_font_crox1h_tf);
       u8g2.drawStr(centerText(_filename.c_str()), 54, _filename.c_str());
       break;
     }
-    case DISPLAY_MODE_WRITE_DONE: {
-      #ifdef DISP_DEBUG
-      Serial.println("DISP::Drawing successful write");
+    case DISPLAY_MODE_WRITING: {
+      #ifdef DISPLAY_MENU_LOG
+      Serial.println("DISP::Drawing writing tag");
       #endif
       u8g2.setFont(u8g2_font_open_iconic_embedded_2x_t);
       u8g2.drawGlyph(120, 29, 0x0045);
 
-      String str = "Write Complete";
+      String str = "Writing Tag";
+      u8g2.setFont(u8g2_font_crox1h_tf);
+      u8g2.drawStr(centerText(str.c_str()), 54, str.c_str());
+      break;
+    }
+    case DISPLAY_MODE_WRITE_DONE: {
+      #ifdef DISPLAY_MENU_LOG
+      Serial.println("DISP::Drawing successful write");
+      #endif
+      u8g2.setFont(u8g2_font_open_iconic_check_2x_t);
+      u8g2.drawGlyph(120, 29, 0x0040);
+
+      String str = "Tag Written";
       u8g2.setFont(u8g2_font_crox1h_tf);
       u8g2.drawStr(centerText(str.c_str()), 54, str.c_str());
       idleMode = DISPLAY_MODE_IDLE;
+      idleTimeout = millis();
       break;
     }
     case DISPLAY_MODE_WRITE_FAIL: {
-      #ifdef DISP_DEBUG
+      #ifdef DISPLAY_MENU_LOG
       Serial.println("DISP::Drawing failed write");
       #endif
-      u8g2.setFont(u8g2_font_open_iconic_embedded_2x_t);
+      u8g2.setFont(u8g2_font_open_iconic_check_2x_t);
       u8g2.drawGlyph(120, 29, 0x0045);
 
       String str = "Write Failed";
       u8g2.setFont(u8g2_font_crox1h_tf);
       u8g2.drawStr(centerText(str.c_str()), 54, str.c_str());
       idleMode = DISPLAY_MODE_IDLE;
+      idleTimeout = millis();
       break;
     }
   }
@@ -156,7 +178,7 @@ void mainDisplay() {
 }
 
 void displayTrack(String trackName, String artist) {
-  #ifdef DISP_DEBUG
+  #ifdef DISPLAY_MENU_LOG
   Serial.println("DISP::New track display request");
   #endif
   idleMode = DISPLAY_MODE_TRACK;
@@ -168,6 +190,12 @@ void displayTrack(String trackName, String artist) {
 void displayClear() {
   idleMode = DISPLAY_MODE_IDLE;
   nav.idleChanged = true;
+}
+
+void displayWritingTag() {
+  idleMode = DISPLAY_MODE_WRITING;
+  nav.idleChanged = true;
+  displayLoop();
 }
 
 void displayWriteSuccess(bool failed = false) {
@@ -204,13 +232,13 @@ result idle(menuOut& o,idleEvent e) {
 /* -------- setup module -------- */
 void displaySetup() {
   u8g2.begin();
+  u8g2.sleepOff();
   u8g2.setFont(fontName);
 
   filePickMenu.begin();
 
   nav.idleTask = idle;
   nav.exit();
-  // nav.idleChanged = true;
 }
 
 /* -------- main loop -------- */
@@ -222,6 +250,10 @@ void displayLoop() {
     nav.doOutput();
     u8g2.sendBuffer();
   }
+  if (idleTimeout && millis() > idleTimeout + DISP_IDLE_TIMEOUT) {
+    idleTimeout = 0;
+    nav.idleChanged = true;
+  }
 }
 
 // returns whether or not we're in the menu
@@ -230,6 +262,14 @@ bool inMenu() {
     return false;
   }
   return true;
+}
+
+void displaySleep() {
+  u8g2.sleepOn();
+}
+void displayWake() {
+  u8g2.sleepOff();
+  nav.idleChanged = true;
 }
 
 /* -------- button handlers -------- */

@@ -23,6 +23,7 @@ struct buttonState {
   bool snooze = false;
 };
 
+bool powerButtonWake();
 void buttonSetup(uint8_t irqPin, void (*interrupt_callback)(buttonState buttons));
 void buttonLoop();
 

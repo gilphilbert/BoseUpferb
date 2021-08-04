@@ -3,6 +3,8 @@
 
 #include "buttons.h"
 
+//#define BUTTON_LOG
+
 const byte SLAVE_ADDR = 0x10;
 const byte NUM_BYTES = 17;
 
@@ -39,6 +41,7 @@ void IRAM_ATTR ISR() {
 }
 
 bool checkComms() {
+  #ifdef BUTTON_LOG
   Wire.beginTransmission(SLAVE_ADDR);
   uint8_t test = Wire.endTransmission();
   switch(test) {
@@ -58,38 +61,50 @@ bool checkComms() {
       break;
   }
   return false;
+  #endif
 }
 
 void buttonSetup(uint8_t irqPin, void (*interrupt_callback_in)(buttonState buttons)) {
+  #ifdef BUTTON_LOG
   Serial.print("BTN::Beginning, IRQ=");
   Serial.println(irqPin);
+  #endif
   pinMode(irqPin, INPUT);
   attachInterrupt(irqPin, ISR, RISING);
   Wire.begin();
-  if (checkComms()) {
-    int_cb = interrupt_callback_in;
+  //checkComms(); // <--- useful for dev work
+  int_cb = interrupt_callback_in;
+}
+
+buttonState checkButtons() {
+  byte data[NUM_BYTES] = { 0 };
+  byte bytesReceived = 0;
+
+  // Call the ATtiny once, to let it prepare the data. Ignore the result.
+  Wire.requestFrom(SLAVE_ADDR, NUM_BYTES);
+  // Give it a pause to prepare the data
+  delayMicroseconds(10);
+  // Call again, now it will have the data prepared
+  Wire.requestFrom(SLAVE_ADDR, NUM_BYTES);
+  bytesReceived = Wire.available();
+  if (bytesReceived == NUM_BYTES) {
+    for (byte i=0; i<NUM_BYTES; i++) {
+      data[i] = Wire.read();
+    }
+    buttonState bs = process(data);
+    return bs;
   }
+}
+
+bool powerButtonWake() {
+  buttonState buttons = checkButtons();
+  return buttons.onoff;
 }
 
 void buttonLoop() {
   if (trigger) {
     trigger = false;
-    byte data[NUM_BYTES] = { 0 };
-    byte bytesReceived = 0;
-
-    // Call the ATtiny once, to let it prepare the data. Ignore the result.
-    Wire.requestFrom(SLAVE_ADDR, NUM_BYTES);
-    // Give it a pause to prepare the data
-    delayMicroseconds(10);
-    // Call again, now it will have the data prepared
-    Wire.requestFrom(SLAVE_ADDR, NUM_BYTES);
-    bytesReceived = Wire.available();
-    if (bytesReceived == NUM_BYTES) {
-      for (byte i=0; i<NUM_BYTES; i++) {
-        data[i] = Wire.read();
-      }
-      buttonState bs = process(data);
-      int_cb(bs);
-    }
+    buttonState buttons = checkButtons();
+    int_cb(buttons);
   }
 }
